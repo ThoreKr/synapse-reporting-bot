@@ -1,1 +1,2 @@
-from .main import Config, ReportLoggingBot
+from .config import Config
+from .main import ReportLoggingBot

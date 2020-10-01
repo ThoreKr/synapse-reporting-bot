@@ -138,3 +138,5 @@ dmypy.json
 cython_debug/
 
 secrets.env
+state.json
+.vscode

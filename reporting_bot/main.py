@@ -1,64 +1,37 @@
 #!/usr/bin/env python3
-
+import json
 import logging
-import time
-from typing import TypedDict
+import os
+from string import Template
 
 import psycopg2
 import psycopg2.extras
+from nio import AsyncClient, LoginResponse, SendRetryError
 
-import environ
-from nio import AsyncClient, MatrixRoom, RoomMessageText, SendRetryError
+from .config import Config
 
 
-@environ.config
-class Config:
-    account_name = environ.var(
-        default='@zazu:localhost',
-        converter=str,
-        help="The account for the bot to use"
-    )
-    account_password = environ.var(
-        converter=str,
-        help="The passwort for the bot account"
-    )
-    homeserver = environ.var(
-        default='http://localhost:8008',
-        converter=str,
-        help="The homeserver to connect to"
-    )
-    logging_room_id = environ.var(
-        converter=str,
-        help=""
-    )
-    db_host = environ.var(
-        default='postgres',
-        converter=str,
-        help="Database to connect to"
-    )
-    db_name = environ.var(
-        default='synapse',
-        converter=str,
-        help="Database name to use"
-    )
-    db_user = environ.var(
-        default='synapse',
-        converter=str,
-        help="Database user to use"
-    )
-    db_password = environ.var(
-        converter=str,
-        help="Password to access synapse database"
-    )
+def write_details_to_disk(resp: LoginResponse, config: Config) -> None:
+    """Writes the required login details to disk so we can log in later without
+    using a password.
 
-    @property
-    def db_connection_string(self) -> str:
-        """Generate the postgres connection string
-
-        Returns:
-            str: psycopg2 connection string
-        """
-        return f'dbname={self.db_name} user={self.db_user}, password={self.db_password}'
+    Args:
+        resp (LoginResponse): The successful login response
+        config (Config): The configuration object
+    """
+    # open the config file in write-mode
+    with open(config.state_file, "w") as f:
+        # write the login details to disk
+        json.dump(
+            {
+                "homeserver": config.homeserver,  # e.g. "https://matrix.example.org"
+                "user_id": resp.user_id,  # e.g. "@user:example.org"
+                "device_id": resp.device_id,  # device ID, 10 uppercase letters
+                "access_token": resp.access_token,  # cryptogr. access token
+                "last_message_id": 0
+            },
+            f
+        )
 
 
 class ReportLoggingBot:
@@ -68,55 +41,82 @@ class ReportLoggingBot:
     def __init__(self, config: Config):
         self.config = config
         self.dbCon = psycopg2.connect(config.db_connection_string)
+        self.logger = logging.getLogger(__name__)
+
+        self.last_message_id = 0
+        self.access_token: str = None
+        self.user_id: str = None
+        self.device_id: str = None
+
+        if os.path.exists(self.config.state_file):
+            # open the state file in read-only mode
+            with open(self.config.state_file, "r") as f:
+                state = json.load(f)
+
+            self.last_message_id = state['last_message_id']
+            self.access_token = state['access_token']
+            self.user_id = state['user_id']
+            self.device_id = state['device_id']
 
     def __del__(self):
         self.dbCon.close()
 
+    def format_message(self, row: dict) -> str:
+        content = json.loads(row['json'])['content']
+        templ_string = (
+            '$user_id has reported a message from $sender in room $room_alias.\n'
+            'Report: $reason\n'
+            'Concerning message:\n'
+            '```\n'
+            '$content\n'
+            '```\n'
+        )
+        return Template(templ_string).substitute(content=content, **row)
+
     def mark_sent(self, event_id: int) -> None:
         # Open a new transaction as contextmanager
-        with self.dbCon:
-            with self.dbConn.cursor() as cursor:
-                update_query = 'UPDATE event_reports_notified_flag SET notified = 1 WHERE event_report_id = %i'
-                cursor.execute(update_query, event_id)
+        self.last_message_id = event_id
 
-    def poll_events(self) -> None:
-        with self.dbCon:
-            with self.dbCon.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
-                qSelect = """
-                SELECT
-                    event_reports.received_ts,
-                    event_reports.room_id,
-                    room_aliases.room_alias,
-                    events.sender,
-                    event_reports.user_id,
-                    event_reports.reason,
-                    event_json.json
-                FROM event_reports
-                    LEFT JOIN room_aliases ON room_aliases.room_id = event_reports.room_id
-                    JOIN events ON events.event_id = event_reports.event_id
-                    JOIN event_json ON event_json.event_id = event_reports.event_id
-                    JOIN event_reports_notified_flag.notified ON event_reports.id = event_reports_notified_flag.event_report_id
-                WHERE event_reports_notified_flag.notified = 1;
-                """
-                cursor.execute(qSelect)
-                results = cursor.fetchall()
-        for row in results:
-            if self.send_to_room(row):
+        with open(self.config.state_file, 'r+') as f:
+            state = json.load(f)
+            # update json here
+            state['last_message_id'] = event_id
+            f.seek(0)
+            f.truncate()
+            json.dump(state, f)
+
+    async def poll_events(self) -> None:
+        cursor = self.dbCon.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        qSelect = """
+            SELECT
+                event_reports.id,
+                event_reports.received_ts,
+                event_reports.room_id,
+                room_aliases.room_alias,
+                events.sender,
+                event_reports.user_id,
+                event_reports.reason,
+                event_json.json
+            FROM event_reports
+                LEFT JOIN room_aliases ON room_aliases.room_id = event_reports.room_id
+                JOIN events ON events.event_id = event_reports.event_id
+                JOIN event_json ON event_json.event_id = event_reports.event_id
+            WHERE event_reports.id > %s;
+        """
+        self.logger.debug("Last message id: %i", self.last_message_id)
+        cursor.execute(qSelect, (self.last_message_id,))
+        for row in cursor:
+            if await self.send_to_room(self.format_message(row)):
                 self.mark_sent(row['id'])
 
-    async def message_callback(self, room: MatrixRoom, event: RoomMessageText) -> None:
-        pass
-
     async def send_to_room(self, message: str) -> bool:
-        client = AsyncClient(self.config.homeserver, self.config.account_name)
-        # client.add_event_callback(message_callback, RoomMessageText)
-
-        print(await client.login(self.config.account_password))
+        client = await self.login()
 
         # If you made a new room and haven't joined as that user, you can use
         await client.join(self.config.logging_room_id)
 
         try:
+            self.logger.debug('Sending report %s', message)
             await client.room_send(
                 # Watch out! If you join an old room you'll see lots of old messages
                 room_id=self.config.logging_room_id,
@@ -127,6 +127,40 @@ class ReportLoggingBot:
                 }
             )
         except SendRetryError:
+            self.logger.debug('Error sending report, trying again later.')
             return False
+        finally:
+            await client.close()
 
         return True
+
+    async def login(self) -> AsyncClient:
+        # If there are no previously-saved credentials, we'll use the password
+        if not os.path.exists(self.config.state_file):
+            self.logger.info("First time use. Did not find credential file. Using environment variables")
+
+            client = AsyncClient(self.config.homeserver, self.config.account_name)
+            resp = await client.login(self.config.account_password, device_name=self.config.device_name)
+
+            # check that we logged in succesfully
+            if (isinstance(resp, LoginResponse)):
+                write_details_to_disk(resp, self.config)
+            else:
+                self.logger.warning(
+                    f'homeserver = "{self.config.homeserver}"; user = "{self.config.account_name}"')
+                self.logger.warning(f'Failed to log in: {resp}')
+                exit(1)
+
+            self.logger.info(
+                'Logged in using a password. Credentials were stored.',
+                'Try running the script again to login with credentials'
+            )
+
+        # Otherwise the config file exists, so we'll use the stored credentials
+        else:
+            client = AsyncClient(self.config.homeserver)
+            client.access_token = self.access_token
+            client.user_id = self.user_id
+            client.device_id = self.device_id
+
+        return client
