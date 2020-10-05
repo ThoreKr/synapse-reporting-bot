@@ -63,15 +63,33 @@ class ReportLoggingBot:
 
     def format_message(self, row: dict) -> str:
         content = json.loads(row['json'])['content']
-        templ_string = (
-            '$user_id has reported a message from $sender in room $room_alias.\n'
+        if row['room_alias'] is None:
+            raw_template = (
+            '$user_id has reported a message from $sender in a private room.\n'
             'Report: $reason\n'
-            'Concerning message:\n'
-            '```\n'
-            '$content\n'
-            '```\n'
-        )
-        return Template(templ_string).substitute(content=content, **row)
+            )
+
+            html_template = (
+            '<p>$user_id has reported a message from $sender in a private room.<br />'
+            'Report: $reason <br />'
+            )
+        else:
+            raw_template = (
+                '$user_id has reported a message from $sender in room $room_alias.\n'
+                'Report: $reason\n'
+                'Concerning message:\n'
+                '```\n'
+                '$content\n'
+                '```\n'
+            )
+
+            html_template = (
+                '<p>$user_id has reported a message from $sender in room $room_alias.<br />'
+                'Report: $reason <br />'
+                'Concerning message:</p>\n<pre><code> $content \n</code></pre>\n'
+            )
+
+        return [Template(template).substitute(content=content, **row) for template in [raw_template, html_template]]
 
     def mark_sent(self, event_id: int) -> None:
         # Open a new transaction as contextmanager
@@ -123,7 +141,9 @@ class ReportLoggingBot:
                 message_type="m.room.message",
                 content={
                     "msgtype": "m.text",
-                    "body": message
+                    "body": message[0],
+                    "format": "org.matrix.custom.html",
+                    "formatted_body": message[1]
                 }
             )
         except SendRetryError:
