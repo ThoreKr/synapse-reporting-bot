@@ -21,6 +21,7 @@ APP_DB_USER (Optional): Database user to use
 APP_DB_PASSWORD (Required): Password to access synapse database
 APP_STATE_FILE (Optional): File to store state information (access token, last sent event) in
 APP_DEVICE_NAME (Optional): Name of the device to send to the homeserver
+APP_POLL_INTERVAL (Optional): Interval to poll the DB for new reports
 LOGLEVEL (Optinal): Standard Python Logger Loglevel to use
 ```
 

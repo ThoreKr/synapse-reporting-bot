@@ -50,6 +50,11 @@ class Config:
         converter=str,
         help='Name of the device to send to the homeserver'
     )
+    poll_interval = environ.var(
+        default=300,
+        converter=int,
+        help='Interval to poll the DB for new reports'
+    )
 
     @property
     def db_connection_string(self) -> str:
