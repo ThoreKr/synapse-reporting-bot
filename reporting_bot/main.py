@@ -105,22 +105,25 @@ class ReportLoggingBot:
 
     async def poll_events(self) -> None:
         cursor = self.dbCon.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        qSelect = """
-            SELECT
-                event_reports.id,
-                event_reports.received_ts,
-                event_reports.room_id,
-                room_aliases.room_alias,
-                events.sender,
-                event_reports.user_id,
-                event_reports.reason,
-                event_json.json
-            FROM event_reports
-                LEFT JOIN room_aliases ON room_aliases.room_id = event_reports.room_id
-                JOIN events ON events.event_id = event_reports.event_id
-                JOIN event_json ON event_json.event_id = event_reports.event_id
-            WHERE event_reports.id > %s;
-        """
+        if self.config.view_name is None:
+            qSelect = """
+                SELECT
+                    event_reports.id,
+                    event_reports.received_ts,
+                    event_reports.room_id,
+                    room_aliases.room_alias,
+                    events.sender,
+                    event_reports.user_id,
+                    event_reports.reason,
+                    event_json.json
+                FROM event_reports
+                    LEFT JOIN room_aliases ON room_aliases.room_id = event_reports.room_id
+                    JOIN events ON events.event_id = event_reports.event_id
+                    JOIN event_json ON event_json.event_id = event_reports.event_id
+                WHERE event_reports.id > %s;
+            """
+        else:
+            qSelect = f"SELECT id, received_ts, room_id, room_alias, sender, user_id, reason, json FROM {self.config.view_name} WHERE id > %s;"
         self.logger.debug("Last message id: %i", self.last_message_id)
         cursor.execute(qSelect, (self.last_message_id,))
         for row in cursor:

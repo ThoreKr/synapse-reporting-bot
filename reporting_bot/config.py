@@ -55,6 +55,11 @@ class Config:
         converter=int,
         help='Interval to poll the DB for new reports'
     )
+    view_name = environ.var(
+        default=None,
+        converter=str,
+        help='Name of the database view to use instead of native queries'
+    )
 
     @property
     def db_connection_string(self) -> str:
