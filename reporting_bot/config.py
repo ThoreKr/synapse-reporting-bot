@@ -51,7 +51,7 @@ class Config:
         help='Name of the device to send to the homeserver'
     )
     poll_interval = environ.var(
-        default=300,
+        default=30,
         converter=int,
         help='Interval to poll the DB for new reports'
     )
