@@ -4,7 +4,7 @@ RUN mkdir -p /app
 RUN apt-get update && apt-get install -y git gcc python3-dev libpq-dev
 
 WORKDIR /app
-RUN pip --no-cache-dir install --upgrade pip setuptools wheel
+RUN pip --no-cache-dir install --upgrade setuptools wheel
 
 COPY . /app
 

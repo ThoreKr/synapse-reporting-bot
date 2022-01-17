@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="reporting-bot",
-    version="0.0.1",
+    version="0.1.0",
     author="ThoreKr",
     author_email="thore@scimeda.de",
     description="Reporting Bot for synapse event_reports table",
@@ -11,7 +11,7 @@ setuptools.setup(
     url="https://github.com/ThoreKr/synapse-reporting-bot",
     packages=setuptools.find_packages(),
     install_requires=[
-        "matrix-nio>=0.17.0",
+        "matrix-nio>=0.18.7",
         "environ-config==20.1.0",
         "psycopg2>=2.8.5",
     ],
