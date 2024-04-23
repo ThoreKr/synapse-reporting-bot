@@ -6,15 +6,13 @@ authors = ["ThoreKr <thore@scimeda.de>"]
 license = "Apache-2.0"
 
 [tool.poetry.dependencies]
-python = ">=3.7,<4.0"
-matrix-nio = "^0.18.7"
-environ-config = "^20.1.0"
-psycopg2 = "^2.8.6"
+python = ">=3.9,<4.0"
+matrix-nio = "^0.24.0"
+environ-config = "^23.2.0"
+psycopg2 = "^2.9.9"
 
 [tool.poetry.dev-dependencies]
-autopep8 = "^1.5.4"
-pylint = "^2.6.0"
-flake8 = "^3.8.4"
+pylint = "^3.1.0"
 
 [build-system]
 requires = ["poetry>=0.12"]

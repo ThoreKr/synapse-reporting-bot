@@ -11,9 +11,9 @@ setuptools.setup(
     url="https://github.com/ThoreKr/synapse-reporting-bot",
     packages=setuptools.find_packages(),
     install_requires=[
-        "matrix-nio>=0.18.7",
-        "environ-config==20.1.0",
-        "psycopg2>=2.8.5",
+        "matrix-nio>=0.24.0",
+        "environ-config==23.2.0",
+        "psycopg2>=2.9.9",
     ],
     classifiers=[
         "Programming Language :: Python :: 3"
