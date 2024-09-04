@@ -137,7 +137,7 @@ class ReportLoggingBot:
         await client.join(self.config.logging_room_id)
 
         try:
-            self.logger.debug('Sending report %s', message)
+            self.logger.info('Sending report %s', message)
             await client.room_send(
                 # Watch out! If you join an old room you'll see lots of old messages
                 room_id=self.config.logging_room_id,
@@ -150,7 +150,7 @@ class ReportLoggingBot:
                 }
             )
         except SendRetryError:
-            self.logger.debug('Error sending report, trying again later.')
+            self.logger.error('Error sending report, trying again later.')
             return False
         finally:
             await client.close()
