@@ -150,7 +150,7 @@ class ReportLoggingBot:
                 }
             )
         except SendRetryError:
-            self.logger.error('Error sending report, trying again later.')
+            self.logger.warning('Error sending report, trying again later.')
             return False
         finally:
             await client.close()
